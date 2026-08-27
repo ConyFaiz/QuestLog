@@ -1,0 +1,256 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+}
+
+/* Diverse Typography Utilities */
+.font-pixel {
+  font-family: 'Press Start 2P', cursive, monospace;
+}
+
+.font-silkscreen {
+  font-family: 'Silkscreen', cursive, monospace;
+}
+
+.font-gaming {
+  font-family: 'Chakra Petch', sans-serif;
+}
+
+.font-heading {
+  font-family: 'Outfit', sans-serif;
+}
+
+.font-retro {
+  font-family: 'VT323', monospace;
+}
+
+.font-sans {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+/* Custom Easing & Transitions (Emil Kowalski Design Eng) */
+:root {
+  --ease-out-smooth: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-smooth: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+/* Theme 1: Sakura Pearl (Light Theme - Pink Tinted White) */
+.theme-sakura-pearl {
+  --app-bg: #fdf2f8;
+  --app-card: #fcf0f7;
+  --app-card-header: #fbcfe8;
+  --app-border: #be185d;
+  --app-text: #831843;
+  --app-text-muted: #9d174d;
+  --app-accent-gold: #db2777;
+  --app-shadow: rgba(190, 24, 93, 0.4);
+}
+
+/* Theme 2: Golden Vanilla (Light Theme - Warm Yellow/Vanilla Tinted White) */
+.theme-golden-vanilla {
+  --app-bg: #fffbeb;
+  --app-card: #fef3c7;
+  --app-card-header: #fde68a;
+  --app-border: #b45309;
+  --app-text: #78350f;
+  --app-text-muted: #92400e;
+  --app-accent-gold: #d97706;
+  --app-shadow: rgba(180, 83, 9, 0.4);
+}
+
+/* Theme 3: Obsidian Violet (Dark Theme - Cosmic Mana Violet) */
+.theme-obsidian-violet {
+  --app-bg: #0f0b18;
+  --app-card: #181226;
+  --app-card-header: #251b3a;
+  --app-border: #6d28d9;
+  --app-text: #f3e8ff;
+  --app-text-muted: #c084fc;
+  --app-accent-gold: #a855f7;
+  --app-shadow: rgba(0, 0, 0, 0.85);
+}
+
+/* Theme 4: Dark Dungeon (Dark Theme - Obsidian Blood Crimson) */
+.theme-dark-dungeon {
+  --app-bg: #120a0a;
+  --app-card: #1d1010;
+  --app-card-header: #2b1717;
+  --app-border: #991b1b;
+  --app-text: #fee2e2;
+  --app-text-muted: #fca5a5;
+  --app-accent-gold: #fbbf24;
+  --app-shadow: rgba(0, 0, 0, 0.85);
+}
+
+/* Button & Interactive Scale Micro-Interactions (Emil Design Eng) */
+button, .clickable-pixel {
+  transition: transform 160ms var(--ease-out-smooth), box-shadow 160ms var(--ease-out-smooth);
+}
+
+button:active, .clickable-pixel:active {
+  transform: scale(0.97) translateY(1px) !important;
+}
+
+/* Custom Pixel Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--app-bg, #0f0b18);
+  border-left: 2px solid var(--app-border, #383952);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--app-border, #383952);
+  border: 2px solid var(--app-bg, #0f0b18);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #db2777;
+}
+
+/* CRT Scanline Overlay */
+.scanlines {
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.2) 50%
+  ), linear-gradient(
+    90deg,
+    rgba(255, 0, 0, 0.04),
+    rgba(0, 255, 0, 0.01),
+    rgba(0, 0, 255, 0.04)
+  );
+  background-size: 100% 4px, 6px 100%;
+  pointer-events: none;
+}
+
+/* Glow & Pulse Keyframes */
+@keyframes goldGlow {
+  0%, 100% { box-shadow: 0 0 6px rgba(251, 191, 36, 0.4); }
+  50% { box-shadow: 0 0 16px rgba(251, 191, 36, 0.8); }
+}
+
+.animate-gold-glow {
+  animation: goldGlow 2s ease-in-out infinite;
+}
+
+@keyframes sakuraGlow {
+  0%, 100% { box-shadow: 0 0 6px rgba(219, 39, 119, 0.4); }
+  50% { box-shadow: 0 0 16px rgba(219, 39, 119, 0.8); }
+}
+
+.animate-sakura-glow {
+  animation: sakuraGlow 2s ease-in-out infinite;
+}
+
+/* Ambient Theme Particle Animations */
+@keyframes fallSakura {
+  0% {
+    transform: translateY(-10vh) rotate(0deg) translateX(0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.8;
+  }
+  85% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateY(105vh) rotate(360deg) translateX(45px);
+    opacity: 0;
+  }
+}
+
+.animate-fall-sakura {
+  animation: fallSakura linear infinite;
+}
+
+@keyframes fallGold {
+  0% {
+    transform: translateY(-10vh) rotate(0deg) scale(0.8);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.9;
+  }
+  80% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateY(105vh) rotate(180deg) scale(1.2);
+    opacity: 0;
+  }
+}
+
+.animate-fall-gold {
+  animation: fallGold linear infinite;
+}
+
+@keyframes floatViolet {
+  0% {
+    transform: translateY(105vh) scale(0.7) rotate(0deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.8;
+  }
+  80% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateY(-10vh) scale(1.2) rotate(270deg);
+    opacity: 0;
+  }
+}
+
+.animate-float-violet {
+  animation: floatViolet linear infinite;
+}
+
+@keyframes fallEmber {
+  0% {
+    transform: translateY(-10vh) translateX(0) scale(0.9);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.85;
+  }
+  80% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: translateY(105vh) translateX(-35px) scale(0.6);
+    opacity: 0;
+  }
+}
+
+.animate-fall-ember {
+  animation: fallEmber linear infinite;
+}
+
+/* Modern CSS @starting-style Entry Animation (Emil Design Eng) */
+.popover-entry {
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 180ms var(--ease-out-smooth), transform 180ms var(--ease-out-smooth);
+
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* Mobile Touch Optimization */
+@media (max-width: 640px) {
+  button, input, select {
+    min-height: 38px;
+  }
+}
