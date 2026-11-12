@@ -1,10 +1,21 @@
 import { create } from 'zustand';
-import { db, seedInitialData, resetFullDatabase } from '../db/database';
+import { db, seedInitialData, resetFullDatabase, getDefaultHeroStats, getDemoQuests } from '../db/database';
 import type { Quest, HeroStats, InventoryItem, QuestLogHistory, ShopItem, AppTheme } from '../types/questlog';
 import { validateLicenseKey, isDemoLicenseKey } from '../config/licenses';
 import { calculateFinalRewards, getExpForLevel, getHeroTitle } from '../utils/leveling';
 import { getTodayString, daysBetween } from '../utils/dateUtils';
 import { playSound } from '../utils/audio';
+import {
+  fetchCloudUserData,
+  syncHeroStatsToCloud,
+  syncAddQuestToCloud,
+  syncUpdateQuestToCloud,
+  syncDeleteQuestFromCloud,
+  syncInventoryItemToCloud,
+  syncAddHistoryToCloud,
+  syncResetAllInCloud,
+  syncMigrateLocalToCloud,
+} from '../services/syncService';
 
 interface QuestStore {
   hero: HeroStats | null;
@@ -21,6 +32,7 @@ interface QuestStore {
   crtOverlay: boolean;
   theme: AppTheme;
   isLoading: boolean;
+  isSyncing: boolean;
   lastLevelUpInfo: { oldLevel: number; newLevel: number } | null;
 
   // Modals state
@@ -34,7 +46,7 @@ interface QuestStore {
 
   // Actions
   initializeStore: () => Promise<void>;
-  setGoogleUser: (user: any, profile?: any) => void;
+  setGoogleUser: (user: any, profile?: any) => Promise<void>;
   setDemoMode: (isDemo: boolean) => void;
   logoutGoogle: () => Promise<void>;
   unlockApp: (key: string) => Promise<{ success: boolean; message: string }>;
@@ -92,6 +104,7 @@ export const useQuestStore = create<QuestStore>((set, get) => ({
   crtOverlay: localStorage.getItem(CRT_STORAGE_KEY) === 'true',
   theme: 'DARK_DUNGEON',
   isLoading: true,
+  isSyncing: false,
   lastLevelUpInfo: null,
 
   isAddQuestOpen: false,
@@ -226,28 +239,102 @@ export const useQuestStore = create<QuestStore>((set, get) => ({
   },
 
   setGoogleUser: async (user: any, profile?: any) => {
-    const { hero } = get();
-    if (user) {
-      const heroName = profile?.username || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Pahlawan_Google';
-      const avatarUrl = profile?.avatar_url || user.user_metadata?.avatar_url || user.user_metadata?.picture || '';
-      
-      if (hero && hero.id) {
-        await db.heroStats.update(hero.id, {
-          name: heroName,
-          avatarUrl: avatarUrl || hero.avatarUrl,
+    if (!user) return;
+    set({ isLoading: true });
+    try {
+      const today = getTodayString();
+      const heroName =
+        profile?.username ||
+        user.user_metadata?.full_name ||
+        user.user_metadata?.name ||
+        user.email?.split('@')[0] ||
+        'Pahlawan_Google';
+      const avatarUrl =
+        profile?.avatar_url ||
+        user.user_metadata?.avatar_url ||
+        user.user_metadata?.picture ||
+        'shield';
+
+      // 1. Ambil data yang tersimpan di Supabase Cloud untuk user ini
+      const cloudData = await fetchCloudUserData(user.id);
+
+      if (cloudData && cloudData.hero && cloudData.quests.length > 0) {
+        // User telah memiliki progres di Cloud: Sinkronkan ke local cache Dexie
+        await db.quests.clear();
+        await db.heroStats.clear();
+        await db.inventory.clear();
+        await db.history.clear();
+
+        const heroWithAuthName: HeroStats = {
+          ...cloudData.hero,
+          name: cloudData.hero.name || heroName,
+          avatarUrl: cloudData.hero.avatarUrl || avatarUrl,
+        };
+
+        const heroId = await db.heroStats.add(heroWithAuthName);
+        heroWithAuthName.id = heroId;
+
+        if (cloudData.quests.length > 0) await db.quests.bulkAdd(cloudData.quests);
+        if (cloudData.inventory.length > 0) await db.inventory.bulkAdd(cloudData.inventory);
+        if (cloudData.history.length > 0) await db.history.bulkAdd(cloudData.history);
+
+        set({
+          isUnlocked: true,
+          isDemoMode: false,
+          googleUser: user,
+          hero: heroWithAuthName,
+          quests: cloudData.quests,
+          inventory: cloudData.inventory,
+          history: cloudData.history,
+          theme: heroWithAuthName.theme || 'DARK_DUNGEON',
+          isLoading: false,
+        });
+      } else {
+        // User baru di Cloud: Ambil progres lokal saat ini dan migrasikan ke akun Supabase Google
+        const currentHero = (await db.heroStats.toArray())[0];
+        const currentQuests = await db.quests.toArray();
+        const currentInv = await db.inventory.toArray();
+        const currentHist = await db.history.toArray();
+
+        const starterHero: HeroStats = currentHero
+          ? {
+              ...currentHero,
+              name: heroName,
+              avatarUrl: avatarUrl || currentHero.avatarUrl,
+            }
+          : {
+              ...(getDefaultHeroStats(today) as HeroStats),
+              name: heroName,
+              avatarUrl: avatarUrl,
+            };
+
+        const starterQuests = currentQuests.length > 0 ? currentQuests : (getDemoQuests(today) as Quest[]);
+
+        if (currentHero?.id) {
+          await db.heroStats.update(currentHero.id, starterHero);
+        } else {
+          const heroId = await db.heroStats.add(starterHero);
+          starterHero.id = heroId;
+        }
+
+        // Upload ke Supabase Cloud
+        await syncMigrateLocalToCloud(user.id, starterHero, starterQuests, currentInv, currentHist);
+
+        set({
+          isUnlocked: true,
+          isDemoMode: false,
+          googleUser: user,
+          hero: starterHero,
+          quests: starterQuests,
+          inventory: currentInv,
+          history: currentHist,
+          theme: starterHero.theme || 'DARK_DUNGEON',
+          isLoading: false,
         });
       }
-
-      set((state) => ({
-        isUnlocked: true,
-        isDemoMode: false,
-        googleUser: user,
-        hero: state.hero ? {
-          ...state.hero,
-          name: heroName,
-          avatarUrl: avatarUrl || state.hero.avatarUrl,
-        } : null,
-      }));
+    } catch (err) {
+      console.error('Error in setGoogleUser sync:', err);
+      set({ isLoading: false });
     }
   },
 
@@ -262,11 +349,17 @@ export const useQuestStore = create<QuestStore>((set, get) => ({
     const { logoutUser } = await import('../services/authService');
     await logoutUser();
     localStorage.removeItem(LICENSE_STORAGE_KEY);
+    const { hero, quests } = await resetFullDatabase();
     set({
       isUnlocked: false,
       isDemoMode: false,
       googleUser: null,
       licenseKey: null,
+      hero,
+      quests,
+      inventory: [],
+      history: [],
+      theme: 'DARK_DUNGEON',
     });
   },
 
@@ -310,6 +403,7 @@ export const useQuestStore = create<QuestStore>((set, get) => ({
   },
 
   addQuest: async (questData) => {
+    const { googleUser, soundEnabled } = get();
     const today = getTodayString();
     const newQuest: Omit<Quest, 'id'> = {
       ...questData,
@@ -326,29 +420,46 @@ export const useQuestStore = create<QuestStore>((set, get) => ({
       isAddQuestOpen: false,
       editingQuest: null,
     }));
-    playSound('click', get().soundEnabled);
+    playSound('click', soundEnabled);
+
+    // Sync to Cloud jika user login dengan Google
+    if (googleUser?.id) {
+      syncAddQuestToCloud(googleUser.id, newQuest).catch(console.error);
+    }
   },
 
   updateQuest: async (id, updates) => {
+    const { googleUser, soundEnabled } = get();
     await db.quests.update(id, updates);
     set((state) => ({
       quests: state.quests.map((q) => (q.id === id ? { ...q, ...updates } : q)),
       isAddQuestOpen: false,
       editingQuest: null,
     }));
-    playSound('click', get().soundEnabled);
+    playSound('click', soundEnabled);
+
+    // Sync to Cloud jika user login dengan Google
+    if (googleUser?.id) {
+      syncUpdateQuestToCloud(googleUser.id, id, updates).catch(console.error);
+    }
   },
 
   deleteQuest: async (id) => {
+    const { googleUser, soundEnabled } = get();
     await db.quests.delete(id);
     set((state) => ({
       quests: state.quests.filter((q) => q.id !== id),
     }));
-    playSound('click', get().soundEnabled);
+    playSound('click', soundEnabled);
+
+    // Sync to Cloud jika user login dengan Google
+    if (googleUser?.id) {
+      syncDeleteQuestFromCloud(googleUser.id, id).catch(console.error);
+    }
   },
 
   completeQuest: async (id) => {
-    const { hero, quests, soundEnabled } = get();
+    const { hero, quests, soundEnabled, googleUser } = get();
     if (!hero) return;
 
     const quest = quests.find((q) => q.id === id);
@@ -437,10 +548,20 @@ export const useQuestStore = create<QuestStore>((set, get) => ({
       quests: state.quests.map((q) => (q.id === id ? { ...q, status: 'COMPLETED', completedAt: completedAtISO } : q)),
       history: [historyEntry, ...state.history],
     }));
+
+    // Sync to Cloud jika user login dengan Google
+    if (googleUser?.id) {
+      syncHeroStatsToCloud(googleUser.id, updatedHero).catch(console.error);
+      syncUpdateQuestToCloud(googleUser.id, id, {
+        status: 'COMPLETED',
+        completedAt: completedAtISO,
+      }).catch(console.error);
+      syncAddHistoryToCloud(googleUser.id, historyEntry).catch(console.error);
+    }
   },
 
   failQuest: async (id) => {
-    const { hero, quests, soundEnabled } = get();
+    const { hero, quests, soundEnabled, googleUser } = get();
     if (!hero) return;
 
     const quest = quests.find((q) => q.id === id);
@@ -483,10 +604,17 @@ export const useQuestStore = create<QuestStore>((set, get) => ({
       quests: state.quests.map((q) => (q.id === id ? { ...q, status: 'FAILED' } : q)),
       history: [historyEntry, ...state.history],
     }));
+
+    // Sync to Cloud jika user login dengan Google
+    if (googleUser?.id) {
+      syncHeroStatsToCloud(googleUser.id, updatedHero).catch(console.error);
+      syncUpdateQuestToCloud(googleUser.id, id, { status: 'FAILED' }).catch(console.error);
+      syncAddHistoryToCloud(googleUser.id, historyEntry).catch(console.error);
+    }
   },
 
   buyShopItem: async (item: ShopItem) => {
-    const { hero, soundEnabled } = get();
+    const { hero, soundEnabled, googleUser } = get();
     if (!hero) return { success: false, message: 'Hero belum dimuat!' };
 
     if (hero.gold < item.price) {
@@ -545,11 +673,19 @@ export const useQuestStore = create<QuestStore>((set, get) => ({
       theme: updatedHero.theme,
     }));
 
+    // Sync to Cloud jika user login dengan Google
+    if (googleUser?.id) {
+      syncHeroStatsToCloud(googleUser.id, updatedHero).catch(console.error);
+      syncAddHistoryToCloud(googleUser.id, historyEntry).catch(console.error);
+      const currentItemQty = newInventory.find((i) => i.itemId === item.id)?.quantity || 1;
+      syncInventoryItemToCloud(googleUser.id, item.id, currentItemQty).catch(console.error);
+    }
+
     return { success: true, message };
   },
 
   useInventoryItem: async (itemId: string) => {
-    const { hero, soundEnabled } = get();
+    const { hero, soundEnabled, googleUser } = get();
     if (!hero) return { success: false, message: 'Hero not found' };
 
     const invItem = await db.inventory.where('itemId').equals(itemId).first();
@@ -570,40 +706,57 @@ export const useQuestStore = create<QuestStore>((set, get) => ({
       playSound('buy', soundEnabled);
     }
 
+    let remainingQuantity = invItem.quantity - 1;
     if (invItem.quantity > 1) {
-      await db.inventory.update(invItem.id!, { quantity: invItem.quantity - 1 });
+      await db.inventory.update(invItem.id!, { quantity: remainingQuantity });
     } else {
       await db.inventory.delete(invItem.id!);
+      remainingQuantity = 0;
     }
 
     await db.heroStats.update(hero.id!, updatedHero);
     const newInventory = await db.inventory.toArray();
 
     set({ hero: updatedHero, inventory: newInventory });
+
+    // Sync to Cloud jika user login dengan Google
+    if (googleUser?.id) {
+      syncHeroStatsToCloud(googleUser.id, updatedHero).catch(console.error);
+      syncInventoryItemToCloud(googleUser.id, itemId, remainingQuantity).catch(console.error);
+    }
+
     return { success: true, message };
   },
 
   toggleTheme: async () => {
-    const { hero } = get();
+    const { hero, googleUser } = get();
     if (!hero) return;
     const themeCycle: AppTheme[] = ['SAKURA_PEARL', 'GOLDEN_VANILLA', 'OBSIDIAN_VIOLET', 'DARK_DUNGEON'];
     const currentIndex = themeCycle.indexOf(hero.theme);
     const nextTheme = themeCycle[(currentIndex + 1) % themeCycle.length];
+    const updatedHero = { ...hero, theme: nextTheme };
     await db.heroStats.update(hero.id!, { theme: nextTheme });
     set((state) => ({
-      hero: state.hero ? { ...state.hero, theme: nextTheme } : null,
+      hero: state.hero ? updatedHero : null,
       theme: nextTheme,
     }));
+    if (googleUser?.id) {
+      syncHeroStatsToCloud(googleUser.id, updatedHero).catch(console.error);
+    }
   },
 
   setTheme: async (newTheme: AppTheme) => {
-    const { hero } = get();
+    const { hero, googleUser } = get();
     if (!hero) return;
+    const updatedHero = { ...hero, theme: newTheme };
     await db.heroStats.update(hero.id!, { theme: newTheme });
     set((state) => ({
-      hero: state.hero ? { ...state.hero, theme: newTheme } : null,
+      hero: state.hero ? updatedHero : null,
       theme: newTheme,
     }));
+    if (googleUser?.id) {
+      syncHeroStatsToCloud(googleUser.id, updatedHero).catch(console.error);
+    }
   },
 
   toggleSound: () => {
@@ -619,17 +772,25 @@ export const useQuestStore = create<QuestStore>((set, get) => ({
   },
 
   setHeroName: async (name: string) => {
-    const { hero } = get();
+    const { hero, googleUser } = get();
     if (!hero) return;
+    const updatedHero = { ...hero, name };
     await db.heroStats.update(hero.id!, { name });
-    set({ hero: { ...hero, name } });
+    set({ hero: updatedHero });
+    if (googleUser?.id) {
+      syncHeroStatsToCloud(googleUser.id, updatedHero).catch(console.error);
+    }
   },
 
   setHeroAvatar: async (avatarUrl: string) => {
-    const { hero } = get();
+    const { hero, googleUser } = get();
     if (!hero) return;
+    const updatedHero = { ...hero, avatarUrl };
     await db.heroStats.update(hero.id!, { avatarUrl });
-    set({ hero: { ...hero, avatarUrl } });
+    set({ hero: updatedHero });
+    if (googleUser?.id) {
+      syncHeroStatsToCloud(googleUser.id, updatedHero).catch(console.error);
+    }
   },
 
   clearLastLevelUpInfo: () => set({ lastLevelUpInfo: null }),
@@ -664,9 +825,16 @@ export const useQuestStore = create<QuestStore>((set, get) => ({
   },
 
   resetAllData: async () => {
+    const { googleUser, soundEnabled } = get();
     set({ isLoading: true });
     try {
+      const today = getTodayString();
       const { hero, quests } = await resetFullDatabase();
+
+      if (googleUser?.id) {
+        await syncResetAllInCloud(googleUser.id, hero, getDemoQuests(today));
+      }
+
       set({
         hero,
         quests,
@@ -676,7 +844,7 @@ export const useQuestStore = create<QuestStore>((set, get) => ({
         theme: hero.theme || 'DARK_DUNGEON',
         isLoading: false,
       });
-      playSound('levelup', get().soundEnabled);
+      playSound('levelup', soundEnabled);
     } catch (err) {
       console.error('Failed to reset all data:', err);
       set({ isLoading: false });
@@ -684,9 +852,16 @@ export const useQuestStore = create<QuestStore>((set, get) => ({
   },
 
   resetDemoQuests: async () => {
+    const { googleUser, soundEnabled } = get();
     set({ isLoading: true });
     try {
+      const today = getTodayString();
       const { hero, quests } = await resetFullDatabase();
+
+      if (googleUser?.id) {
+        await syncResetAllInCloud(googleUser.id, hero, getDemoQuests(today));
+      }
+
       set({
         hero,
         quests,
@@ -696,7 +871,7 @@ export const useQuestStore = create<QuestStore>((set, get) => ({
         theme: hero.theme || 'DARK_DUNGEON',
         isLoading: false,
       });
-      playSound('levelup', get().soundEnabled);
+      playSound('levelup', soundEnabled);
     } catch (err) {
       console.error('Failed to reset demo quests:', err);
       set({ isLoading: false });

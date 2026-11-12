@@ -14,13 +14,14 @@ import { QuestStats } from './components/quests/QuestStats';
 import { LevelUpModal } from './components/hero/LevelUpModal';
 import { ThemeSelectorModal } from './components/theme/ThemeSelectorModal';
 import { PixelButton } from './components/common/PixelButton';
-import { ShoppingBag, Backpack, Scroll, Settings, KeyRound, Palette, Volume2, VolumeX, Shield, Sword } from 'lucide-react';
+import { ShoppingBag, Backpack, Scroll, Settings, KeyRound, Palette, Volume2, VolumeX, Shield, Sword, Cloud } from 'lucide-react';
 import type { AppTheme } from './types/questlog';
 
 export function App() {
   const {
     isUnlocked,
     isDemoMode,
+    googleUser,
     initializeStore,
     isLoading,
     setIsShopOpen,
@@ -121,7 +122,11 @@ export function App() {
                   <span className="font-gaming text-[10px] px-1.5 py-0.5 border bg-emerald-950 border-emerald-600 text-emerald-300 font-bold rounded-xs">
                     LOCAL-FIRST
                   </span>
-                  {isDemoMode ? (
+                  {googleUser ? (
+                    <span className="font-gaming text-[10px] px-1.5 py-0.5 border bg-blue-950 border-blue-500 text-blue-300 font-bold rounded-xs flex items-center gap-1">
+                      <Cloud className="w-2.5 h-2.5 text-cyan-400" /> CLOUD SYNC
+                    </span>
+                  ) : isDemoMode ? (
                     <button
                       onClick={() => setIsUpgradeModalOpen(true)}
                       className="font-gaming text-[10px] px-1.5 py-0.5 border bg-amber-950 border-amber-500 text-amber-300 hover:bg-amber-900 transition-colors flex items-center gap-1 cursor-pointer font-bold rounded-xs"

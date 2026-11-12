@@ -7,11 +7,11 @@ import { PixelButton } from '../common/PixelButton';
 import { Backpack, PackageCheck } from 'lucide-react';
 
 export const InventoryModal: React.FC = () => {
-  const { isInventoryOpen, setIsInventoryOpen, inventory, useInventoryItem } = useQuestStore();
+  const { isInventoryOpen, setIsInventoryOpen, inventory, useInventoryItem: consumeItem } = useQuestStore();
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const handleUseItem = async (itemId: string) => {
-    const res = await useInventoryItem(itemId);
+    const res = await consumeItem(itemId);
     setToastMessage(res.message);
     setTimeout(() => setToastMessage(null), 3000);
   };

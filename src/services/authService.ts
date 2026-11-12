@@ -1,9 +1,43 @@
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
 
+export const signUpWithEmail = async (email: string, password: string, heroName: string) => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Kredensial Supabase belum dikonfigurasi di file .env!');
+  }
+
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        full_name: heroName,
+        name: heroName,
+      },
+    },
+  });
+
+  if (error) throw error;
+  return data;
+};
+
+export const loginWithEmail = async (email: string, password: string) => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Kredensial Supabase belum dikonfigurasi di file .env!');
+  }
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) throw error;
+  return data;
+};
+
 export const loginWithGoogle = async () => {
   if (!isSupabaseConfigured()) {
     throw new Error(
-      'Kredensial Supabase belum dikonfigurasi di file .env!'
+      'Kredensial Supabase belum dikonfigurasi di file .env! Silakan masukkan VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY.'
     );
   }
 
@@ -11,6 +45,10 @@ export const loginWithGoogle = async () => {
     provider: 'google',
     options: {
       redirectTo: window.location.origin,
+      queryParams: {
+        access_type: 'offline',
+        prompt: 'consent',
+      },
     },
   });
 
@@ -21,24 +59,28 @@ export const loginWithGoogle = async () => {
 export const ensureGoogleUserProfile = async (user: any) => {
   if (!user) return null;
 
-  const avatarUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture || '';
+  const avatarUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture || 'shield';
   const email = user.email || '';
   const heroName =
     user.user_metadata?.full_name ||
     user.user_metadata?.name ||
     user.email?.split('@')[0] ||
-    'Pahlawan_Google';
+    'Pahlawan_QuestLog';
 
   if (!isSupabaseConfigured()) {
     return {
-      id: user.id || 'demo-google-user',
+      id: user.id || 'demo-user',
       username: heroName,
       email,
       avatar_url: avatarUrl,
+      title: 'Novice Adventurer',
       level: 1,
       exp: 0,
-      gold: 300,
+      gold: 100,
       hp: 100,
+      max_hp: 100,
+      streak_days: 1,
+      theme: 'DARK_DUNGEON',
     };
   }
 
@@ -54,7 +96,7 @@ export const ensureGoogleUserProfile = async (user: any) => {
     }
 
     if (existingProfile) {
-      if (avatarUrl && !existingProfile.avatar_url) {
+      if (avatarUrl && (!existingProfile.avatar_url || existingProfile.avatar_url === 'shield')) {
         await supabase
           .from('profiles')
           .update({ avatar_url: avatarUrl })
@@ -64,15 +106,23 @@ export const ensureGoogleUserProfile = async (user: any) => {
       return existingProfile;
     }
 
+    const todayStr = new Date().toISOString().split('T')[0];
     const newProfile = {
       id: user.id,
       username: heroName,
       email,
       avatar_url: avatarUrl,
+      title: 'Novice Adventurer',
       level: 1,
       exp: 0,
-      gold: 300,
+      gold: 100,
       hp: 100,
+      max_hp: 100,
+      streak_days: 1,
+      last_completed_date: todayStr,
+      is_streak_frozen: false,
+      theme: 'DARK_DUNGEON',
+      badge: 'Novice Adventurer',
     };
 
     const { error: insertError } = await supabase
@@ -91,10 +141,14 @@ export const ensureGoogleUserProfile = async (user: any) => {
       username: heroName,
       email,
       avatar_url: avatarUrl,
+      title: 'Novice Adventurer',
       level: 1,
       exp: 0,
-      gold: 300,
+      gold: 100,
       hp: 100,
+      max_hp: 100,
+      streak_days: 1,
+      theme: 'DARK_DUNGEON',
     };
   }
 };
