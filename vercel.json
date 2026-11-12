@@ -1,8 +1,5 @@
 {
   "outputDirectory": "dist",
-  "alias": [
-    "questlog-dusky.vercel.app"
-  ],
   "rewrites": [
     {
       "source": "/(.*)",
