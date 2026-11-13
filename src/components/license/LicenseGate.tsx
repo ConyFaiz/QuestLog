@@ -75,9 +75,14 @@ export const LicenseGate: React.FC = () => {
       if (activeTab === 'REGISTER') {
         const nameToUse = heroName.trim() || email.split('@')[0] || 'Pahlawan_Baru';
         const data = await signUpWithEmail(email.trim(), password, nameToUse);
-        if (data?.user) {
+        if (data?.user && data?.session) {
           const profile = await ensureGoogleUserProfile(data.user);
           await setGoogleUser(data.user, profile);
+        } else if (data?.user) {
+          setSuccessMsg(
+            'Akun berhasil dibuat! Cek email (Inbox/Spam) untuk klik link konfirmasi, lalu Login di tab MASUK.'
+          );
+          setActiveTab('LOGIN');
         } else {
           setSuccessMsg('Akun berhasil dibuat! Silakan coba login.');
           setActiveTab('LOGIN');
