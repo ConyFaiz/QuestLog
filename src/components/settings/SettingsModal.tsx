@@ -169,15 +169,22 @@ export const SettingsModal: React.FC = () => {
           </div>
         </div>
 
-        {/* License & Supabase Google Auth Status */}
+        {/* Supabase Auth Status */}
         <div className="border-4 border-black bg-[#161622] p-3 space-y-2 shadow-[4px_4px_0px_#000]">
           <h4 className="font-pixel text-[11px] text-yellow-300 flex items-center gap-1.5">
-            <Shield className="w-3.5 h-3.5 text-amber-400" /> STATUS AUTENTIKASI SUPABASE
+            <Shield className="w-3.5 h-3.5 text-amber-400" /> STATUS AKUN QUESTLOG
           </h4>
           <div className="flex items-center justify-between font-mono text-[11px] text-gray-300">
-            <span>Metode: {useQuestStore.getState().googleUser ? 'Google OAuth' : (isDemoMode ? 'Demo Guest Mode' : 'Supabase Auth')}</span>
+            <span>
+              Metode:{' '}
+              {useQuestStore.getState().googleUser
+                ? `Username (${useQuestStore.getState().googleUser?.user_metadata?.username || useQuestStore.getState().hero?.name || 'Pahlawan'})`
+                : isDemoMode
+                ? 'Demo Guest Mode'
+                : 'Akun Cloud'}
+            </span>
             <span className={`font-pixel text-[9px] px-2 py-0.5 border-2 ${isDemoMode ? 'bg-amber-950 border-amber-500 text-amber-300' : 'bg-emerald-950 border-emerald-500 text-emerald-300'}`}>
-              {isDemoMode ? 'MODE DEMO' : 'GOOGLE CONNECTED'}
+              {isDemoMode ? 'MODE OFFLINE' : 'CLOUD TERHUBUNG'}
             </span>
           </div>
 
@@ -186,7 +193,7 @@ export const SettingsModal: React.FC = () => {
               useQuestStore.getState().logoutGoogle();
               setIsSettingsOpen(false);
             }}>
-              <Lock className="w-3.5 h-3.5 mr-1 inline" /> LOGOUT GOOGLE / KUNCI
+              <Lock className="w-3.5 h-3.5 mr-1 inline" /> KELUAR AKUN / KUNCI
             </PixelButton>
           </div>
         </div>

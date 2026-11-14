@@ -245,10 +245,11 @@ export const useQuestStore = create<QuestStore>((set, get) => ({
       const today = getTodayString();
       const heroName =
         profile?.username ||
+        user.user_metadata?.username ||
         user.user_metadata?.full_name ||
         user.user_metadata?.name ||
         user.email?.split('@')[0] ||
-        'Pahlawan_Google';
+        'Pahlawan_QuestLog';
       const avatarUrl =
         profile?.avatar_url ||
         user.user_metadata?.avatar_url ||

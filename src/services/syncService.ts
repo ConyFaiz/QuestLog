@@ -31,7 +31,7 @@ export const fetchCloudUserData = async (userId: string): Promise<CloudUserData 
     if (profileData) {
       hero = {
         id: 1, // local id representation
-        name: profileData.username || 'Pahlawan Google',
+        name: profileData.username || 'Pahlawan_QuestLog',
         title: profileData.title || 'Novice Adventurer',
         level: profileData.level ?? 1,
         hp: profileData.hp ?? 100,

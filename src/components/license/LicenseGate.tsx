@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useQuestStore } from '../../store/useQuestStore';
 import { PixelButton } from '../common/PixelButton';
-import { Shield, Sword, Sparkles, AlertCircle, Play, CheckCircle2, Mail, Lock, User, LogIn, UserPlus } from 'lucide-react';
+import { Shield, Sword, Sparkles, AlertCircle, Play, CheckCircle2, Lock, User, LogIn, UserPlus } from 'lucide-react';
 import {
-  loginWithGoogle,
-  loginWithEmail,
-  signUpWithEmail,
+  loginWithUsername,
+  signUpWithUsername,
+  validateUsername,
   getCurrentUser,
   ensureGoogleUserProfile,
 } from '../../services/authService';
@@ -21,9 +21,8 @@ export const LicenseGate: React.FC = () => {
 
   // Form states
   const [activeTab, setActiveTab] = useState<AuthTab>('LOGIN');
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [heroName, setHeroName] = useState('');
 
   const hasConfig = isSupabaseConfigured();
 
@@ -47,13 +46,20 @@ export const LicenseGate: React.FC = () => {
     checkCurrentSession();
   }, [hasConfig, setGoogleUser]);
 
-  const handleEmailAuth = async (e: React.FormEvent) => {
+  const handleUsernameAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    if (!email.trim() || !password.trim()) {
-      setErrorMsg('Mohon isi Email dan Kata Sandi!');
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername || !password.trim()) {
+      setErrorMsg('Mohon isi Username dan Kata Sandi!');
+      return;
+    }
+
+    const usernameError = validateUsername(trimmedUsername);
+    if (usernameError) {
+      setErrorMsg(usernameError);
       return;
     }
 
@@ -73,22 +79,20 @@ export const LicenseGate: React.FC = () => {
 
     try {
       if (activeTab === 'REGISTER') {
-        const nameToUse = heroName.trim() || email.split('@')[0] || 'Pahlawan_Baru';
-        const data = await signUpWithEmail(email.trim(), password, nameToUse);
+        const data = await signUpWithUsername(trimmedUsername, password);
         if (data?.user && data?.session) {
           const profile = await ensureGoogleUserProfile(data.user);
           await setGoogleUser(data.user, profile);
         } else if (data?.user) {
-          setSuccessMsg(
-            'Akun berhasil dibuat! Cek email (Inbox/Spam) untuk klik link konfirmasi, lalu Login di tab MASUK.'
+          setErrorMsg(
+            'Akun dibuat, namun pengaturan "Confirm email" di Supabase Dashboard (Authentication -> Providers -> Email) masih aktif. Matikan opsi tersebut agar bisa langsung login pakai username!'
           );
-          setActiveTab('LOGIN');
         } else {
-          setSuccessMsg('Akun berhasil dibuat! Silakan coba login.');
+          setSuccessMsg('Akun berhasil dibuat! Silakan masuk di tab MASUK.');
           setActiveTab('LOGIN');
         }
       } else {
-        const data = await loginWithEmail(email.trim(), password);
+        const data = await loginWithUsername(trimmedUsername, password);
         if (data?.user) {
           const profile = await ensureGoogleUserProfile(data.user);
           await setGoogleUser(data.user, profile);
@@ -99,43 +103,17 @@ export const LicenseGate: React.FC = () => {
       if (msg.includes('fetch') || msg.includes('ENOTFOUND') || msg.includes('Failed to fetch')) {
         setErrorMsg('Gagal terhubung ke database Supabase. Periksa koneksi internet atau URL Supabase Anda.');
       } else if (msg.includes('Invalid login credentials')) {
-        setErrorMsg('Email atau Kata Sandi salah!');
+        setErrorMsg('Username atau Kata Sandi salah!');
+      } else if (msg.includes('Email not confirmed')) {
+        setErrorMsg(
+          'Akun ini menunggu konfirmasi email di Supabase. Matikan "Confirm email" di Supabase Dashboard -> Authentication -> Providers -> Email lalu buat akun ulang.'
+        );
       } else if (msg.includes('User already registered')) {
-        setErrorMsg('Email ini sudah terdaftar! Silakan pilih tab Masuk (Login).');
+        setErrorMsg('Username ini sudah terdaftar! Silakan pilih tab MASUK.');
       } else {
         setErrorMsg(msg || 'Terjadi kesalahan saat autentikasi.');
       }
     } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleGoogleLogin = async () => {
-    setErrorMsg(null);
-    setIsLoading(true);
-
-    if (!hasConfig) {
-      setErrorMsg(
-        'Kredensial Supabase di file .env belum lengkap. Silakan atur VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY.'
-      );
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      await loginWithGoogle();
-    } catch (err: any) {
-      const msg = err?.message || '';
-      if (msg.includes('fetch') || msg.includes('ENOTFOUND') || msg.includes('Failed to fetch')) {
-        setErrorMsg(
-          'Tidak dapat terhubung ke URL Supabase. Pastikan VITE_SUPABASE_URL di file .env menggunakan URL proyek yang aktif.'
-        );
-      } else {
-        setErrorMsg(
-          err.message ||
-            'Gagal melakukan Login Google. Pastikan Provider Google sudah diaktifkan di Supabase Dashboard.'
-        );
-      }
       setIsLoading(false);
     }
   };
@@ -223,33 +201,19 @@ export const LicenseGate: React.FC = () => {
           </button>
         </div>
 
-        {/* Email & Password Form */}
-        <form onSubmit={handleEmailAuth} className="space-y-3 font-retro text-xs bg-black/60 border-2 border-slate-700 p-3.5">
-          {activeTab === 'REGISTER' && (
-            <div className="space-y-1">
-              <label className="font-pixel text-[10px] text-gray-300 flex items-center gap-1">
-                <User className="w-3 h-3 text-amber-400" /> NAMA PAHLAWAN
-              </label>
-              <input
-                type="text"
-                placeholder="cth: Satria Pixel"
-                value={heroName}
-                onChange={(e) => setHeroName(e.target.value)}
-                className="w-full bg-[#12121c] border-2 border-slate-600 px-2.5 py-1.5 text-yellow-300 font-bold focus:border-amber-400 focus:outline-none"
-                maxLength={20}
-              />
-            </div>
-          )}
-
+        {/* Username & Password Form */}
+        <form onSubmit={handleUsernameAuth} className="space-y-3 font-retro text-xs bg-black/60 border-2 border-slate-700 p-3.5">
           <div className="space-y-1">
             <label className="font-pixel text-[10px] text-gray-300 flex items-center gap-1">
-              <Mail className="w-3 h-3 text-amber-400" /> EMAIL
+              <User className="w-3 h-3 text-amber-400" /> USERNAME
             </label>
             <input
-              type="email"
-              placeholder="cth: pahlawan@gmail.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              placeholder="cth: conyfaiz (tanpa spasi)"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              maxLength={24}
               className="w-full bg-[#12121c] border-2 border-slate-600 px-2.5 py-1.5 text-yellow-300 font-bold focus:border-amber-400 focus:outline-none"
               required
             />
@@ -264,10 +228,17 @@ export const LicenseGate: React.FC = () => {
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete={activeTab === 'LOGIN' ? 'current-password' : 'new-password'}
               className="w-full bg-[#12121c] border-2 border-slate-600 px-2.5 py-1.5 text-yellow-300 font-bold focus:border-amber-400 focus:outline-none"
               required
             />
           </div>
+
+          {activeTab === 'REGISTER' && (
+            <p className="font-retro text-[11px] text-emerald-300/90 leading-snug">
+              Semua progres Hero, Quest, Gold, Level &amp; Inventory akan otomatis tersimpan di akun ini.
+            </p>
+          )}
 
           <button
             type="submit"
@@ -289,7 +260,8 @@ export const LicenseGate: React.FC = () => {
             <span>Malas bikin akun? Langsung Main Offline!</span>
           </div>
           <p className="font-retro text-[11px] text-gray-300 leading-relaxed">
-            Klik tombol di bawah untuk langsung mencoba seluruh fitur QuestLog. Progres quest & levelmu **tetap tersimpan di browser ini** (IndexedDB).
+            Klik tombol di bawah untuk langsung mencoba seluruh fitur QuestLog. Progres quest &amp; levelmu{' '}
+            <strong className="text-cyan-200">tetap tersimpan di browser ini</strong> (IndexedDB).
           </p>
           <PixelButton
             variant="secondary"
@@ -300,25 +272,6 @@ export const LicenseGate: React.FC = () => {
             <Play className="w-3.5 h-3.5 mr-1 inline text-cyan-400" />
             MASUK SEBAGAI TAMU (MODE OFFLINE)
           </PixelButton>
-        </div>
-
-        {/* Google OAuth (Optional Shortcut) */}
-        <div className="text-center font-retro text-[11px] text-gray-400 border-t border-slate-800 pt-2.5 space-y-1.5">
-          <p className="text-[10px]">Atau jika Supabase Google Provider Anda sudah aktif:</p>
-          <button
-            type="button"
-            onClick={handleGoogleLogin}
-            disabled={isLoading}
-            className="w-full bg-[#121824] border-2 border-slate-700 hover:border-blue-500 text-gray-300 py-1.5 px-3 font-pixel text-[10px] flex items-center justify-center gap-2 cursor-pointer transition-colors"
-          >
-            <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
-              <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"/>
-              <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.6h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.9z"/>
-              <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12.4 0 15.3s.7 5.6 1.9 8l3.7-2.9z"/>
-              <path fill="#34A853" d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2L1.9 16c1.8 3.7 5.6 7 10.1 7z"/>
-            </svg>
-            <span>MASUK DENGAN GOOGLE OAUTH</span>
-          </button>
         </div>
 
       </div>

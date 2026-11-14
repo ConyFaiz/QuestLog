@@ -1,17 +1,46 @@
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
 
-export const signUpWithEmail = async (email: string, password: string, heroName: string) => {
+const INTERNAL_AUTH_DOMAIN = 'questlog.app';
+const USERNAME_REGEX = /^[a-zA-Z0-9_][a-zA-Z0-9._-]{1,22}[a-zA-Z0-9_]$/;
+
+export const validateUsername = (rawUsername: string): string | null => {
+  const trimmed = rawUsername.trim();
+  if (trimmed.includes('@')) {
+    return trimmed.length >= 5 ? null : 'Format username atau email tidak valid.';
+  }
+  if (trimmed.length < 3 || trimmed.length > 24) {
+    return 'Username harus antara 3 sampai 24 karakter.';
+  }
+  if (trimmed.includes('..') || !USERNAME_REGEX.test(trimmed)) {
+    return 'Username hanya boleh berisi huruf, angka, titik (.), underscore (_), atau strip (-) tanpa spasi.';
+  }
+  return null;
+};
+
+export const usernameToAuthEmail = (rawUsername: string): string => {
+  const normalized = rawUsername.trim().toLowerCase();
+  if (normalized.includes('@')) {
+    return normalized;
+  }
+  return `${normalized}@${INTERNAL_AUTH_DOMAIN}`;
+};
+
+export const signUpWithUsername = async (username: string, password: string) => {
   if (!isSupabaseConfigured()) {
     throw new Error('Kredensial Supabase belum dikonfigurasi di file .env!');
   }
 
+  const displayUsername = username.trim();
+  const authEmail = usernameToAuthEmail(displayUsername);
+
   const { data, error } = await supabase.auth.signUp({
-    email,
+    email: authEmail,
     password,
     options: {
       data: {
-        full_name: heroName,
-        name: heroName,
+        username: displayUsername,
+        full_name: displayUsername,
+        name: displayUsername,
       },
     },
   });
@@ -20,36 +49,16 @@ export const signUpWithEmail = async (email: string, password: string, heroName:
   return data;
 };
 
-export const loginWithEmail = async (email: string, password: string) => {
+export const loginWithUsername = async (username: string, password: string) => {
   if (!isSupabaseConfigured()) {
     throw new Error('Kredensial Supabase belum dikonfigurasi di file .env!');
   }
 
+  const authEmail = usernameToAuthEmail(username);
+
   const { data, error } = await supabase.auth.signInWithPassword({
-    email,
+    email: authEmail,
     password,
-  });
-
-  if (error) throw error;
-  return data;
-};
-
-export const loginWithGoogle = async () => {
-  if (!isSupabaseConfigured()) {
-    throw new Error(
-      'Kredensial Supabase belum dikonfigurasi di file .env! Silakan masukkan VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY.'
-    );
-  }
-
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: window.location.origin,
-      queryParams: {
-        access_type: 'offline',
-        prompt: 'consent',
-      },
-    },
   });
 
   if (error) throw error;
@@ -62,6 +71,7 @@ export const ensureGoogleUserProfile = async (user: any) => {
   const avatarUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture || 'shield';
   const email = user.email || '';
   const heroName =
+    user.user_metadata?.username ||
     user.user_metadata?.full_name ||
     user.user_metadata?.name ||
     user.email?.split('@')[0] ||
